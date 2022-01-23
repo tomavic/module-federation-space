@@ -1,0 +1,51 @@
+name: CI
+
+# Every push and pull request: lint, test and build the shell, both remotes and the shared library.
+# Pushes to main also publish the demo to GitHub Pages
+# (one-time setup: Settings > Pages > Build and deployment > Source: GitHub Actions).
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx format:check
+      - run: pnpm nx run-many -t lint test build
+      - if: github.event_name == 'push'
+        run: node tools/assemble-pages.mjs "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+      - if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/pages
+
+  pages:
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
